@@ -10,6 +10,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Typography, IconButton } from '@/components/ui';
 import { Screen } from '@/components/layout';
+import { TradingDashboard } from '@/components/trading';
+import { useMarketData } from '@/hooks/useAlpaca';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/design';
 import { formatCurrency, formatTime } from '@/utils';
 
@@ -27,6 +29,11 @@ interface TradingActivity {
 export default function HomeScreen() {
   const [balance, setBalance] = useState(1247.83);
   const [dayProfit, setDayProfit] = useState(47.21);
+  const { marketStatus, watchlistData } = useMarketData();
+  
+  // Mock account ID for demo
+  const mockAccountId = 'demo-account-123';
+  
   const [todayActivity, setTodayActivity] = useState<TradingActivity[]>([
     {
       id: '1',
@@ -243,22 +250,16 @@ export default function HomeScreen() {
       {/* Community Pulse */}
       <View style={styles.communitySection}>
         <Typography variant="h4" color="900" style={styles.sectionTitle}>
-          Community Pulse
+          Live Market Data
         </Typography>
         <Card style={styles.communityCard} padding="xl">
           <Typography variant="caption" color="500" style={{ marginBottom: Spacing.lg }}>
-            Most traded stocks today
+            Real-time market data from Alpaca
           </Typography>
           
           <View style={styles.stockList}>
-            {[
-              { symbol: 'AAPL', name: 'Apple Inc.', change: '+2.4%', trending: true },
-              { symbol: 'TSLA', name: 'Tesla Inc.', change: '+5.7%', trending: true },
-              { symbol: 'NVDA', name: 'NVIDIA Corp.', change: '+3.1%', trending: true },
-              { symbol: 'MSFT', name: 'Microsoft Corp.', change: '+1.8%', trending: false },
-              { symbol: 'AMZN', name: 'Amazon Inc.', change: '+2.9%', trending: false },
-            ].map((stock, index) => (
-              <View key={stock.symbol} style={styles.stockItem}>
+            {watchlistData ? Object.entries(watchlistData).map(([symbol, data], index) => (
+              <View key={symbol} style={styles.stockItem}>
                 <View style={styles.stockLeft}>
                   <View style={styles.stockRank}>
                     <Typography variant="caption" color="500" weight="bold">
@@ -268,26 +269,44 @@ export default function HomeScreen() {
                   <View style={styles.stockInfo}>
                     <View style={styles.stockHeader}>
                       <Typography variant="body" color="900" weight="semiBold">
-                        {stock.symbol}
+                        {symbol}
                       </Typography>
-                      {stock.trending && (
+                      {Math.abs(data.change_percent) > 3 && (
                         <View style={styles.trendingBadge}>
                           <Ionicons name="flame" size={10} color={Colors.orange[600]} />
                         </View>
                       )}
                     </View>
                     <Typography variant="caption" color="500">
-                      {stock.name}
+                      {formatCurrency(data.current_price)}
                     </Typography>
                   </View>
                 </View>
-                <Typography variant="body" color="success" weight="semiBold">
-                  {stock.change}
+                <Typography 
+                  variant="body" 
+                  color={data.change_percent >= 0 ? 'success' : 'error'} 
+                  weight="semiBold">
+                  {formatPercentage(data.change_percent, { showSign: true })}
                 </Typography>
               </View>
-            ))}
+            )) : (
+              <Typography variant="body" color="500" style={{ textAlign: 'center' }}>
+                Loading market data...
+              </Typography>
+            )}
           </View>
         </Card>
+      </View>
+
+      {/* Trading Dashboard */}
+      <View style={styles.tradingSection}>
+        <Typography variant="h4" color="900" style={styles.sectionTitle}>
+          Trading Dashboard
+        </Typography>
+        <TradingDashboard 
+          accountId={mockAccountId}
+          onTradePress={() => console.log('Open trade modal')}
+        />
       </View>
     </Screen>
   );
@@ -456,5 +475,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.orange[100],
     borderRadius: BorderRadius.sm,
     padding: 2,
+  },
+  tradingSection: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing['3xl'],
   },
 });
