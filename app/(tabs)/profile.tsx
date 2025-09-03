@@ -9,6 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Typography, IconButton, Button, Input, Switch, Avatar, Divider } from '@/components/ui';
 import { Screen } from '@/components/layout';
+import { router } from 'expo-router';
 import { AlpacaService } from '@/services/alpacaService';
 import { Colors, Spacing, BorderRadius } from '@/constants/design';
 import { formatCurrency } from '@/utils';
@@ -19,7 +20,7 @@ export default function ProfileScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [isOnboarded, setIsOnboarded] = useState(true);
+  const [isOnboarded, setIsOnboarded] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(true);
 
@@ -123,7 +124,7 @@ export default function ProfileScreen() {
               </Typography>
               <Button 
                 title="Get Started"
-                onPress={() => setShowOnboardingModal(true)}
+                onPress={() => router.push('/signup')}
                 size="lg"
                 fullWidth
               />

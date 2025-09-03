@@ -44,6 +44,12 @@ export function Input({
   const hasError = !!error;
   const hasLeftIcon = !!leftIcon;
   const hasRightIcon = !!rightIcon;
+  
+  const getInputColor = () => {
+    if (hasError) return Colors.error[500];
+    if (isFocused) return Colors.primary[500];
+    return Colors.neutral[400];
+  };
 
   return (
     <View style={[styles.container, style]} testID={testID}>
@@ -69,7 +75,7 @@ export function Input({
           <Ionicons 
             name={leftIcon} 
             size={ComponentSizes.icon.sm} 
-            color={hasError ? Colors.error[500] : Colors.neutral[500]} 
+            color={getInputColor()} 
             style={styles.leftIcon}
           />
         )}
@@ -94,7 +100,7 @@ export function Input({
             <Ionicons 
               name={rightIcon} 
               size={ComponentSizes.icon.sm} 
-              color={hasError ? Colors.error[500] : Colors.neutral[500]} 
+              color={getInputColor()} 
             />
           </TouchableOpacity>
         )}
