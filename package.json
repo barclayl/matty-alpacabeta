@@ -13,8 +13,6 @@
     "@expo-google-fonts/rubik": "^0.4.1",
     "@expo/vector-icons": "^15.0.2",
     "@lucide/lab": "^0.1.2",
-    "@react-navigation/bottom-tabs": "^7.4.7",
-    "@react-navigation/native": "^7.1.17",
     "@stripe/stripe-react-native": "^0.51.0",
     "ajv": "^8.12.0",
     "body-parser": "^2.2.0",
