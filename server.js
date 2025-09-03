@@ -553,6 +553,74 @@ app.get('/api/account/:accountId', async (req, res) => {
   }
 });
 
+// Cancel order
+app.delete('/api/account/:accountId/orders/:orderId', async (req, res) => {
+  try {
+    const { accountId, orderId } = req.params;
+    
+    const response = await fetch(`${alpacaBrokerClient.baseURL}/v1/accounts/${accountId}/orders/${orderId}`, {
+      method: 'DELETE',
+      headers: alpacaBrokerClient.headers
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to cancel order: ${response.status}`);
+    }
+
+    res.json({ success: true, message: 'Order cancelled successfully' });
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    res.status(500).json({ error: 'Failed to cancel order' });
+  }
+});
+
+// Get asset information
+app.get('/api/assets/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    
+    const response = await fetch(`${alpacaBrokerClient.baseURL}/v1/assets/${symbol}`, {
+      headers: alpacaBrokerClient.headers
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch asset: ${response.status}`);
+    }
+
+    const asset = await response.json();
+    res.json(asset);
+  } catch (error) {
+    console.error('Error fetching asset:', error);
+    res.status(500).json({ error: 'Failed to fetch asset information' });
+  }
+});
+
+// Search assets
+app.get('/api/assets', async (req, res) => {
+  try {
+    const { search, status = 'active', asset_class = 'us_equity' } = req.query;
+    
+    let url = `${alpacaBrokerClient.baseURL}/v1/assets?status=${status}&asset_class=${asset_class}`;
+    if (search) {
+      url += `&search=${search}`;
+    }
+
+    const response = await fetch(url, {
+      headers: alpacaBrokerClient.headers
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to search assets: ${response.status}`);
+    }
+
+    const assets = await response.json();
+    res.json(assets);
+  } catch (error) {
+    console.error('Error searching assets:', error);
+    res.status(500).json({ error: 'Failed to search assets' });
+  }
+});
+
 // Get trading calendar
 app.get('/api/market/calendar', async (req, res) => {
   try {

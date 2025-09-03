@@ -9,6 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Typography, IconButton, Button, Input, Switch, Avatar, Divider } from '@/components/ui';
 import { Screen } from '@/components/layout';
+import { AlpacaService } from '@/services/alpacaService';
 import { Colors, Spacing, BorderRadius } from '@/constants/design';
 import { formatCurrency } from '@/utils';
 
@@ -37,39 +38,28 @@ export default function ProfileScreen() {
     }
 
     try {
-      const response = await fetch('http://192.168.1.100:3001/api/create-alpaca-account', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          email,
-          phone,
-        }),
+      const data = await AlpacaService.createAccount({
+        firstName,
+        lastName,
+        email,
+        phone,
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        Alert.alert(
-          'Account Created!',
-          'Your Alpaca brokerage account has been successfully created. A virtual debit card will be issued shortly.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                setIsOnboarded(true);
-                setShowOnboardingModal(false);
-              },
+      
+      Alert.alert(
+        'Account Created!',
+        `Your Alpaca brokerage account has been successfully created.\n\nAccount ID: ${data.alpaca_account.id}\n\nA virtual debit card will be issued shortly.`,
+        [
+          {
+            text: 'Continue',
+            onPress: () => {
+              setIsOnboarded(true);
+              setShowOnboardingModal(false);
             },
-          ]
-        );
-      } else {
-        throw new Error('Failed to create account');
-      }
+          },
+        ]
+      );
     } catch (error) {
-      Alert.alert('Error', 'Failed to create account. Please try again.');
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create account. Please try again.');
     }
   };
 

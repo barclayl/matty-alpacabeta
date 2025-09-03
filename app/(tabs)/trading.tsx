@@ -11,54 +11,31 @@ import { Ionicons } from '@expo/vector-icons';
 import { Card, Typography, IconButton, Button, Input, Badge } from '@/components/ui';
 import { Screen } from '@/components/layout';
 import { PaymentButton } from '@/components/payments/PaymentButton';
+import { useAlpacaAccount, useAlpacaPositions, useAlpacaOrders, useAlpacaTrading, useMarketData } from '@/hooks/useAlpaca';
 import { Colors, Spacing, BorderRadius, Shadows } from '@/constants/design';
 import { formatCurrency, formatPercentage, formatTime } from '@/utils';
-
-interface Position {
-  symbol: string;
-  shares: number;
-  avgCost: number;
-  currentPrice: number;
-  change: number;
-  changePercent: number;
-}
 
 export default function TradingScreen() {
   const [transferAmount, setTransferAmount] = useState('');
   const [showTransferModal, setShowTransferModal] = useState(false);
-  const [accountBalance, setAccountBalance] = useState(1247.83);
-  const [investedAmount, setInvestedAmount] = useState(892.45);
+  const [showTradeModal, setShowTradeModal] = useState(false);
+  const [tradeSymbol, setTradeSymbol] = useState('');
+  const [tradeQuantity, setTradeQuantity] = useState('');
+  const [tradeSide, setTradeSide] = useState<'buy' | 'sell'>('buy');
   
-  const [positions] = useState<Position[]>([
-    {
-      symbol: 'AAPL',
-      shares: 3.2,
-      avgCost: 175.30,
-      currentPrice: 182.15,
-      change: 6.85,
-      changePercent: 3.91,
-    },
-    {
-      symbol: 'TSLA',
-      shares: 1.1,
-      avgCost: 245.67,
-      currentPrice: 251.20,
-      change: 5.53,
-      changePercent: 2.25,
-    },
-    {
-      symbol: 'NVDA',
-      shares: 0.8,
-      avgCost: 420.90,
-      currentPrice: 435.80,
-      change: 14.90,
-      changePercent: 3.54,
-    },
-  ]);
+  // Mock account ID for demo - in production this would come from user auth
+  const mockAccountId = 'demo-account-123';
+  
+  const { account, balance, loading: accountLoading, error: accountError } = useAlpacaAccount(mockAccountId);
+  const { positions, loading: positionsLoading, refetch: refetchPositions } = useAlpacaPositions(mockAccountId);
+  const { orders, loading: ordersLoading, refetch: refetchOrders } = useAlpacaOrders(mockAccountId);
+  const { marketStatus, watchlistData, loading: marketLoading } = useMarketData();
+  const { executeTrade, initiateTransfer, loading: tradingLoading } = useAlpacaTrading(mockAccountId);
 
-  const totalValue = positions.reduce((sum, pos) => sum + (pos.shares * pos.currentPrice), 0);
-  const totalGainLoss = positions.reduce((sum, pos) => sum + (pos.shares * pos.change), 0);
+  const totalValue = positions.reduce((sum, pos) => sum + parseFloat(pos.market_value || '0'), 0);
+  const totalGainLoss = positions.reduce((sum, pos) => sum + parseFloat(pos.unrealized_pl || '0'), 0);
   const totalGainLossPercent = (totalGainLoss / (totalValue - totalGainLoss)) * 100;
+  const accountBalance = balance ? parseFloat(balance.cash) : 0;
 
   const handleTransfer = () => {
     if (!transferAmount || parseFloat(transferAmount) <= 0) {
@@ -79,24 +56,65 @@ export default function TradingScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Transfer',
-          onPress: () => {
-            setAccountBalance(prev => prev - amount);
-            setTransferAmount('');
-            setShowTransferModal(false);
-            Alert.alert('Success', 'Transfer initiated successfully!');
+          onPress: async () => {
+            try {
+              await initiateTransfer({
+                amount,
+                direction: 'OUTGOING',
+              });
+              setTransferAmount('');
+              setShowTransferModal(false);
+              Alert.alert('Success', 'Transfer initiated successfully!');
+            } catch (error) {
+              Alert.alert('Error', error instanceof Error ? error.message : 'Transfer failed');
+            }
           },
         },
       ]
     );
   };
 
+  const handleTrade = async () => {
+    if (!tradeSymbol || !tradeQuantity) {
+      Alert.alert('Error', 'Please enter symbol and quantity');
+      return;
+    }
+
+    const quantity = parseFloat(tradeQuantity);
+    if (quantity <= 0) {
+      Alert.alert('Error', 'Please enter a valid quantity');
+      return;
+    }
+
+    try {
+      const result = await executeTrade({
+        symbol: tradeSymbol.toUpperCase(),
+        side: tradeSide,
+        qty: quantity,
+        type: 'market',
+        time_in_force: 'day',
+      });
+
+      Alert.alert('Trade Executed', result.message);
+      setTradeSymbol('');
+      setTradeQuantity('');
+      setShowTradeModal(false);
+      
+      // Refresh data
+      refetchPositions();
+      refetchOrders();
+    } catch (error) {
+      Alert.alert('Trade Error', error instanceof Error ? error.message : 'Trade failed');
+    }
+  };
+
   const todayTimeline = [
     { time: '09:30', event: 'Market opened', type: 'info' },
-    { time: '09:45', event: 'Auto-invested $200 in AAPL', type: 'buy' },
-    { time: '11:20', event: 'TSLA position up 2.3%', type: 'gain' },
-    { time: '13:15', event: 'Sold NVDA partial position', type: 'sell' },
-    { time: '15:30', event: 'Day trading profit: +$47.21', type: 'profit' },
-    { time: '16:00', event: 'Market closed', type: 'info' },
+    { time: '09:45', event: `Auto-invested in ${positions[0]?.symbol || 'AAPL'}`, type: 'buy' },
+    { time: '11:20', event: `${positions[1]?.symbol || 'TSLA'} position up ${formatPercentage(2.3)}`, type: 'gain' },
+    { time: '13:15', event: `Sold ${positions[2]?.symbol || 'NVDA'} partial position`, type: 'sell' },
+    { time: '15:30', event: `Day trading profit: ${formatCurrency(totalGainLoss, { showSign: true })}`, type: 'profit' },
+    { time: '16:00', event: marketStatus?.is_open ? 'Market open' : 'Market closed', type: 'info' },
   ];
 
   const getTimelineColor = (type: string) => {
@@ -124,12 +142,40 @@ export default function TradingScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Typography variant="h2" color="900">Trading</Typography>
-        <IconButton 
-          icon="time" 
-          onPress={() => console.log('History')}
-          variant="ghost"
-        />
+        <View style={styles.headerActions}>
+          <IconButton 
+            icon="add" 
+            onPress={() => setShowTradeModal(true)}
+            variant="primary"
+            size="sm"
+          />
+          <IconButton 
+            icon="time" 
+            onPress={() => console.log('History')}
+            variant="ghost"
+          />
+        </View>
       </View>
+
+      {/* Market Status */}
+      {marketStatus && (
+        <View style={styles.marketStatusSection}>
+          <Card style={styles.marketStatusCard} padding="lg">
+            <View style={styles.marketStatusContent}>
+              <View style={[
+                styles.marketStatusIndicator,
+                { backgroundColor: marketStatus.is_open ? Colors.success[500] : Colors.error[500] }
+              ]} />
+              <Typography variant="body" color="700" weight="semiBold">
+                Market is {marketStatus.is_open ? 'Open' : 'Closed'}
+              </Typography>
+              <Typography variant="caption" color="500" style={{ marginLeft: 'auto' }}>
+                {marketStatus.is_open ? 'Closes' : 'Opens'}: {formatTime(new Date(marketStatus.is_open ? marketStatus.next_close : marketStatus.next_open))}
+              </Typography>
+            </View>
+          </Card>
+        </View>
+      )}
 
       {/* Portfolio Summary */}
       <View style={styles.portfolioSection}>
@@ -165,7 +211,7 @@ export default function TradingScreen() {
           <View style={styles.transferHeader}>
             <View>
               <Typography variant="h4" color="900">Quick Transfer</Typography>
-              <Typography variant="caption" color="success" weight="medium" style={{ marginTop: Spacing.xs }}>
+              <Typography variant="caption" color={accountBalance > 0 ? 'success' : 'error'} weight="medium" style={{ marginTop: Spacing.xs }}>
                 Available: {formatCurrency(accountBalance)}
               </Typography>
             </View>
@@ -192,6 +238,12 @@ export default function TradingScreen() {
               }}
             />
           </View>
+          
+          {accountLoading && (
+            <Typography variant="caption" color="500" style={{ textAlign: 'center', marginTop: Spacing.md }}>
+              Loading account data...
+            </Typography>
+          )}
         </Card>
       </View>
 
@@ -200,6 +252,19 @@ export default function TradingScreen() {
         <Typography variant="h4" color="900" style={styles.sectionTitle}>
           Current Positions
         </Typography>
+        {positionsLoading ? (
+          <Card style={styles.positionsCard} padding="xl">
+            <Typography variant="body" color="500" style={{ textAlign: 'center' }}>
+              Loading positions...
+            </Typography>
+          </Card>
+        ) : positions.length === 0 ? (
+          <Card style={styles.positionsCard} padding="xl">
+            <Typography variant="body" color="500" style={{ textAlign: 'center' }}>
+              No positions found. Start trading to see your positions here.
+            </Typography>
+          </Card>
+        ) : (
         <Card style={styles.positionsCard} padding="xl">
           <View style={styles.positionsList}>
             {positions.map((position) => (
@@ -212,28 +277,29 @@ export default function TradingScreen() {
                   </View>
                   <View style={styles.positionInfo}>
                     <Typography variant="body" color="900" weight="semiBold">
-                      {position.shares} shares
+                      {parseFloat(position.qty)} shares
                     </Typography>
                     <Typography variant="caption" color="500">
-                      Avg: {formatCurrency(position.avgCost)}
+                      Avg: {formatCurrency(parseFloat(position.avg_entry_price || '0'))}
                     </Typography>
                   </View>
                 </View>
                 <View style={styles.positionValues}>
                   <Typography variant="body" color="900" weight="semiBold">
-                    {formatCurrency(position.shares * position.currentPrice)}
+                    {formatCurrency(parseFloat(position.market_value))}
                   </Typography>
                   <Badge 
-                    variant={position.change >= 0 ? 'success' : 'error'}
+                    variant={parseFloat(position.unrealized_pl) >= 0 ? 'success' : 'error'}
                     size="sm"
                     style={{ marginTop: Spacing.xs }}>
-                    {formatCurrency(position.change, { showSign: true })}
+                    {formatCurrency(parseFloat(position.unrealized_pl), { showSign: true })}
                   </Badge>
                 </View>
               </View>
             ))}
           </View>
         </Card>
+        )}
       </View>
 
       {/* Today's Timeline */}
@@ -275,6 +341,92 @@ export default function TradingScreen() {
           </View>
         </Card>
       </View>
+
+      {/* Trade Modal */}
+      <Modal
+        visible={showTradeModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowTradeModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Typography variant="h3" color="900">Place Trade</Typography>
+              <IconButton 
+                icon="close" 
+                onPress={() => setShowTradeModal(false)}
+                variant="ghost"
+              />
+            </View>
+            
+            <View style={styles.tradeForm}>
+              <View style={styles.tradeSideSelector}>
+                <TouchableOpacity
+                  style={[
+                    styles.tradeSideButton,
+                    tradeSide === 'buy' && styles.tradeSideButtonActive,
+                    { backgroundColor: tradeSide === 'buy' ? Colors.success[500] : Colors.neutral[200] }
+                  ]}
+                  onPress={() => setTradeSide('buy')}>
+                  <Typography 
+                    variant="body" 
+                    weight="semiBold"
+                    style={{ color: tradeSide === 'buy' ? Colors.neutral[0] : Colors.neutral[600] }}>
+                    BUY
+                  </Typography>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.tradeSideButton,
+                    tradeSide === 'sell' && styles.tradeSideButtonActive,
+                    { backgroundColor: tradeSide === 'sell' ? Colors.error[500] : Colors.neutral[200] }
+                  ]}
+                  onPress={() => setTradeSide('sell')}>
+                  <Typography 
+                    variant="body" 
+                    weight="semiBold"
+                    style={{ color: tradeSide === 'sell' ? Colors.neutral[0] : Colors.neutral[600] }}>
+                    SELL
+                  </Typography>
+                </TouchableOpacity>
+              </View>
+              
+              <Input
+                label="Symbol"
+                value={tradeSymbol}
+                onChangeText={setTradeSymbol}
+                placeholder="e.g., AAPL"
+                autoCapitalize="characters"
+                variant="filled"
+              />
+              
+              <Input
+                label="Quantity"
+                value={tradeQuantity}
+                onChangeText={setTradeQuantity}
+                placeholder="Number of shares"
+                keyboardType="numeric"
+                variant="filled"
+              />
+              
+              <View style={styles.tradeInfo}>
+                <Typography variant="caption" color="500">
+                  Market Order • Available: {formatCurrency(accountBalance)}
+                </Typography>
+              </View>
+            </View>
+            
+            <Button 
+              title={`${tradeSide.toUpperCase()} ${tradeQuantity || '0'} ${tradeSymbol || 'shares'}`}
+              onPress={handleTrade}
+              loading={tradingLoading}
+              size="lg"
+              fullWidth
+              variant={tradeSide === 'buy' ? 'primary' : 'destructive'}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* Transfer Modal */}
       <Modal
@@ -349,6 +501,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing['5xl'],
     paddingBottom: Spacing.lg,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  marketStatusSection: {
+    paddingHorizontal: Spacing.xl,
+    marginBottom: Spacing.lg,
+  },
+  marketStatusCard: {
+    backgroundColor: Colors.surface.primary,
+  },
+  marketStatusContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  marketStatusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: BorderRadius.full,
+    marginRight: Spacing.sm,
   },
   portfolioSection: {
     paddingHorizontal: Spacing.xl,
@@ -512,5 +685,30 @@ const styles = StyleSheet.create({
   },
   amountSection: {
     marginTop: Spacing.lg,
+  },
+  tradeForm: {
+    marginBottom: Spacing['2xl'],
+  },
+  tradeSideSelector: {
+    flexDirection: 'row',
+    marginBottom: Spacing.lg,
+    backgroundColor: Colors.neutral[100],
+    borderRadius: BorderRadius.md,
+    padding: 4,
+  },
+  tradeSideButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderRadius: BorderRadius.sm,
+  },
+  tradeSideButtonActive: {
+    ...Shadows.sm,
+  },
+  tradeInfo: {
+    backgroundColor: Colors.neutral[100],
+    padding: Spacing.md,
+    borderRadius: BorderRadius.md,
+    marginTop: Spacing.md,
   },
 });
